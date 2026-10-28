@@ -263,6 +263,53 @@ def make_imbalance_analysis(runs, out):
                          'delta_mean':float(differences.mean()),
                          'delta_std':float(differences.std(ddof=1)) if len(differences)>1 else None})
     pd.DataFrame(records).to_csv(out / 'statistics' / 'ablation_paired_deltas.csv', index=False)
+    # Interação fatorial em pares completos por semente: I = D - B - C + A.
+    # A comparação é EXPLORATÓRIA porque o mesmo teste externo é reutilizado.
+    interaction_rows = []
+    for group_key, subset in runs.groupby(['method','space','scale','budget']):
+        for metric in cols:
+            # Não agregar seeds duplicadas silenciosamente.
+            pivot = subset.pivot_table(index='seed',
+                                       columns=['fitness_metric','class_weight'],
+                                       values=metric, aggfunc='mean')
+            arms = [('accuracy','none'),('f1_macro','none'),
+                    ('accuracy','balanced'),('f1_macro','balanced')]
+            if any(a not in pivot.columns for a in arms):
+                continue
+            four = pivot.loc[:, arms].dropna()
+            if four.empty:
+                continue
+            a, b, c, d = (four[arm] for arm in arms)
+            effect = d - b - c + a
+            interaction_rows.append(dict(zip(['method','space','scale','budget'],group_key)) |
+                {'metric':metric, 'seeds_paired':len(effect),
+                 'interaction_mean':float(effect.mean()),
+                 'interaction_std':float(effect.std(ddof=1)) if len(effect)>1 else np.nan})
+    pd.DataFrame(interaction_rows, columns=['method','space','scale','budget',
+        'metric','seeds_paired','interaction_mean','interaction_std']).to_csv(
+        out / 'statistics' / 'ablation_interactions.csv', index=False)
+
+    # Diferenças pareadas do otimizador adaptativo vs. PSO tradicional
+    # SOMENTE com braço, budget, escala, espaço e semente correspondentes.
+    optimizer_rows = []
+    for group_key, subset in runs.groupby(['space','scale','budget','fitness_metric','class_weight']):
+        for metric in cols:
+            wide_methods = subset.pivot_table(index='seed', columns='method',
+                                             values=metric, aggfunc='mean')
+            if not {'pso','adaptive_pso'}.issubset(wide_methods.columns):
+                continue
+            differences = (wide_methods['adaptive_pso'] - wide_methods['pso']).dropna()
+            if differences.empty:
+                continue
+            optimizer_rows.append(dict(zip(['space','scale','budget','fitness_metric','class_weight'],group_key)) |
+                {'metric':metric, 'seeds_paired':len(differences),
+                 'adaptive_minus_pso_mean':float(differences.mean()),
+                 'adaptive_minus_pso_std':float(differences.std(ddof=1)) if len(differences)>1 else np.nan})
+    pd.DataFrame(optimizer_rows, columns=['space','scale','budget','fitness_metric',
+        'class_weight','metric','seeds_paired','adaptive_minus_pso_mean',
+        'adaptive_minus_pso_std']).to_csv(
+        out / 'statistics' / 'adaptive_vs_pso_paired.csv', index=False)
+
     labels = {('accuracy','none'):'A - acurácia / sem pesos',
               ('f1_macro','none'):'B - F1-macro / sem pesos',
               ('accuracy','balanced'):'C - acurácia / balanceado',
@@ -287,6 +334,8 @@ def make_imbalance_analysis(runs, out):
         'Os quatro cenários são: A=accuracy+none, B=f1_macro+none, '
         'C=accuracy+balanced e D=f1_macro+balanced.\n'
         'Diferenças pareadas = variante - controle A, mesma semente, método, espaço, escala e orçamento.\n'
+        'Interação fatorial = D - B - C + A, com comparação dentro do mesmo método e semente.\n'
+        'adaptive_vs_pso_paired.csv confronta métodos no mesmo braço, semente e orçamento.\n'
         'O teste não é usado na escolha de C/gamma; comparações de teste são uma análise '
         'exploratória de configurações pré-definidas. Uma única base/divisão não prova superioridade geral.\n'
         'F1-macro pondera igualmente as seis classes; class_weight=balanced altera '

@@ -74,11 +74,44 @@ def write_docs(refs, description, run_dir, budget, method):
             vals=refs[meth][label]
             for k,col in enumerate(['test_f1_macro','test_accuracy','test_min_class_recall','elapsed_total_s'],start=2):
                 row[k].text=mean_std(vals[col])
+    # Tabela geral: apenas os PSOs possuem resultados no modo imbalance.
+    # Para TPE/Random Search, não extrapolar valores de métodos não executados.
+    base_table = next((table for table in doc.tables
+        if table.cell(0, 0).text == 'Método'
+        and 'Acurácia média' in table.cell(0, 1).text), None)
+    if base_table is not None:
+        for cells in (r.cells for r in base_table.rows[1:]):
+            name = cells[0].text.strip()
+            key = {'PSO':'pso', 'PSO adaptativo':'adaptive_pso'}.get(name)
+            if key:
+                arm = refs[key]['A']
+                for col_idx, field in [(1,'test_accuracy'),(2,'test_f1_macro'),
+                                       (3,'elapsed_total_s')]:
+                    cells[col_idx].text = mean_std(arm[field])
+            else:
+                for cell in cells[1:]:
+                    cell.text = 'Não avaliado neste modo'
     for p in doc.paragraphs:
         if p.text.startswith('Esta tabela é um modelo;'):
             p.text=(f'Tabela preenchida automaticamente de {run_dir.name}, budget {budget}, '
                     f'dataset sha256={description["sha256"][:16]}…; '
                     f'mesma(s) semente(s) em A–D. Dados experimentais; conferir outros budgets separadamente.')
+        if p.text.startswith('[INSERIR APÓS EXECUTAR SATIMAGE REAL]'):
+            p.text=(f'Tabela 1 — Satimage real, orçamento {budget}; resultados PSO e '
+                    'PSO adaptativo no braço A (accuracy/none). TPE/Random Search não '
+                    'avaliados neste modo; executar extensão separada para compará-los.')
+        if p.text.startswith('[INSERIR RESULTADOS SATIMAGE]'):
+            p.text=(f'Tabela fatorial A–D preenchida com resultados reais, orçamento {budget}. '
+                    'Comparar cada método sob as mesmas sementes; não interpretar o melhor '
+                    'cenário do teste como seleção independente de modelo.')
+        if p.text.startswith('Conclusão provisória:'):
+            mean_diff=(refs['adaptive_pso']['D']['test_f1_macro']
+                       - refs['adaptive_pso']['A']['test_f1_macro']).mean()
+            p.text=(f'Conclusão experimental delimitada: na Satimage, no orçamento {budget}, '
+                    f'a diferença média D−A do PSO adaptativo em F1-macro foi '
+                    f'{mean_diff:+.4f} nas sementes registradas. Esta observação não '
+                    f'comprova ganho geral; verificar as classes, a variância e '
+                    f'outros orçamentos antes de qualquer conclusão abrangente.')
         if p.text.startswith('ESTADO DA IMPLEMENTAÇÃO:'):
             p.text=(f'RESULTADOS INCLUÍDOS: experimento Satimage REAL; orçamento {budget}. '
                     f'Base validada: 6435 amostras, 36 atributos, 6 classes; hash '
@@ -93,7 +126,11 @@ def write_docs(refs, description, run_dir, budget, method):
     for label,idx in zip(['B','C','D'],[10,13,16]):
         delta=refs[method][label]['test_f1_macro']-refs[method]['A']['test_f1_macro']
         put_text(slide.shapes[idx],f'{delta.mean():+.4f} (média; n={len(delta)})')
-    put_text(slide.shapes[18],f'Fonte: {run_dir.name}/runs.csv  |  diferença de F1-macro no teste')
+    # Interação fatorial: (D-B-C+A), calculada em sementes comuns.
+    effect=(refs[method]['D']['test_f1_macro'] - refs[method]['B']['test_f1_macro']
+           - refs[method]['C']['test_f1_macro'] + refs[method]['A']['test_f1_macro'])
+    put_text(slide.shapes[18],
+             f'Interação D−B−C+A = {effect.mean():+.4f} | Fonte: runs.csv')
     slide2=ppt.slides[29]
     rows=refs[method]
     summaries=[]

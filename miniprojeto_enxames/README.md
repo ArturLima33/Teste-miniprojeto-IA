@@ -2,9 +2,35 @@
 
 **Implementação executável, testada e documentada** do estudo de Rizkallah (2025) com extensão experimental própria.
 
-> **Estado da validação:** todos os 21 testes `pytest` passaram; os oito algoritmos do artigo foram executados em uma base **sintética, exclusivamente para verificar a integração**. **A base real Satimage não pôde ser baixada no ambiente de criação**. Portanto, arquivos em `results/verificacao_*` NÃO são resultados da pesquisa e NÃO devem ser apresentados como tais. A reprodução real pode ser iniciada com os comandos abaixo, em máquina com acesso à base PMLB.
+> **Estado da validação:** os 25 testes da auditoria v3 `pytest` passaram; os oito algoritmos do artigo foram executados em uma base **sintética, exclusivamente para verificar a integração**. **A base real Satimage não pôde ser baixada no ambiente de criação**. Portanto, arquivos em `results/verificacao_*` NÃO são resultados da pesquisa e NÃO devem ser apresentados como tais. A reprodução real pode ser iniciada com os comandos abaixo, em máquina com acesso à base PMLB.
 
-## NOVA EXTENSÃO — F1-macro e balanceamento de classes (versão 2)
+
+## Auditoria v3 — correções e próximos passos
+
+**Correções aplicadas e cobertas por testes:**
+
+- PSO adaptativo: decaimento da inércia por **geração de movimento** (primeira = 0,9; última = 0,4 quando há pelo menos 2 gerações), e reinicialização verificável da **pior partícula**, preservando gBest. O CSV de avaliações registra `pso_inertia`, `pso_restart` e `pso_stalled_generations`. Com 10 partículas, 20 avaliações permitem apenas uma atualização completa; por isso incluímos **100 avaliações** no estudo A–D.
+- Successive Halving: os subconjuntos aninhados agora preservam aproximadamente as **proporções originais das classes**; antes, a distribuição das primeiras amostras era artificialmente balanceada.
+- Extensão A–D: além das diferenças B−A, C−A e D−A, calcula-se a interação **I=D−B−C+A** e a diferença PSO adaptativo − PSO tradicional em condições pareadas. Essas diferenças são **exploratórias** quando usadas na mesma divisão de teste.
+- Gerador do Word: a tabela geral recebe apenas dados do **braço A** dos dois PSOs; linhas TPE e Random Search são marcadas **não avaliadas neste modo** em vez de deixar placeholders ou inventar resultados. O slide de resultados inclui o termo de interação.
+
+**Prioridade de execução no Codespaces:**
+
+```bash
+cd /workspaces/Seminario-IA/miniprojeto_enxames
+python -m pip install -r requirements.txt
+python -m pytest -q
+# 1ª execução real focal, 8 cenários × 100 avaliações = 800 ajustes SVM
+python main.py --mode imbalance --budgets 100 --seeds 0 --out results/estudo_100_seed0
+# estudo completo: 120 execuções / 6800 avaliações; pode ser demorado
+python main.py --mode imbalance --out results/estudo_completo_v3
+# após execução REAL completa, gerar cópias Word e PowerPoint:
+python gerar_documentos_com_resultados.py --results results/estudo_completo_v3 --budget 100
+```
+
+O gerador exige A–D completos em ambos os PSOs, com sementes pareadas e sem `--smoke/--quick`. Ele não substitui a revisão final da equipe. **Nenhuma acurácia real da Satimage foi produzida nesta auditoria.**
+
+## NOVA EXTENSÃO — F1-macro e balanceamento de classes (versão 3 auditada)
 
 **Problema observado:** a Satimage possui classes de tamanhos diferentes (valores publicados em estudos sobre Satimage: 1533/703/1358/626/707/1508; razão 2,45). Otimizar apenas a acurácia pode privilegiar acertos das classes maiores. A comparação usa métricas por classe, não apenas acurácia agregada. O artigo não conduz essa análise fatorial.
 
@@ -27,7 +53,7 @@ python -m pytest -q
 python main.py --mode imbalance --dry-run
 # verificação rápida, dados ARTIFICIAIS:
 python main.py --mode imbalance --smoke --budgets 10 --seeds 0
-# execução científica: Satimage REAL, 2 PSOs × 4 braços × 2 orçamentos × 5 sementes:
+# execução científica: Satimage REAL, 2 PSOs × 4 braços × 3 orçamentos × 5 sementes:
 python main.py --mode imbalance
 # execução real mais curta para validação preliminar:
 python main.py --mode imbalance --budgets 20 --seeds 0 1 2
@@ -35,7 +61,7 @@ python main.py --mode imbalance --budgets 20 --seeds 0 1 2
 
 Se executar de fora da pasta, use `python /caminho/para/miniprojeto_enxames/main.py --mode imbalance`. O caminho-padrão de configuração e base é relativo ao projeto, corrigindo o problema de execução visto anteriormente. `--out` permite escolher a pasta dos resultados.
 
-**Novos arquivos de resultados:** `statistics/ablation_summary.csv` (média/DP das quatro condições), `statistics/ablation_paired_deltas.csv` (efeitos variante − controle A com sementes pareadas), `per_class/*.csv` (precisão, recall, F1 e suporte por classe), gráficos `figures/ablation_*.png`, histórico das avaliações com `val_accuracy`, `val_f1_macro` e `best_val_score`. Nos arquivos CSV, `best_val_score` é a métrica selecionada na validação; `best_val_accuracy` é a acurácia de validação da solução selecionada (não necessariamente a métrica otimizada).
+**Novos arquivos de resultados:** `statistics/ablation_summary.csv` (média/DP das quatro condições), `statistics/ablation_paired_deltas.csv` (efeitos variante − A), `statistics/ablation_interactions.csv` (interação D−B−C+A), `statistics/adaptive_vs_pso_paired.csv` (diferença adaptativo − PSO, sementes pareadas), `per_class/*.csv` (precisão, recall, F1 e suporte por classe), gráficos `figures/ablation_*.png`, histórico das avaliações com `val_accuracy`, `val_f1_macro` e `best_val_score`. Nos arquivos CSV, `best_val_score` é a métrica selecionada na validação; `best_val_accuracy` é a acurácia de validação da solução selecionada (não necessariamente a métrica otimizada).
 
 **Salvaguardas:** a reprodução do artigo continua obrigatoriamente `accuracy+none`. Para as novas experiências, nenhum valor do teste entra na função objetivo. Os resultados do modo `--smoke` são apenas de funcionamento, nunca evidência científica. Para interpretar a Satimage use `runs.csv` (filtre `status==ok`, `smoke==False`, `quick==False`) e o `dataset_report.json`. A comparação A×D faz análise exploratória sobre uma única divisão fixa; evitar testes de significância como prova de superioridade geral.
 
@@ -105,7 +131,7 @@ python main.py --mode extension --methods pso adaptive_pso --scales log --spaces
 python main.py --mode extension --methods pso adaptive_pso --validation cv --scales log --spaces wide --budgets 20 --seeds 0 1 2
 ```
 
-A opção `--mode extension` possui cinco algoritmos: PSO original, **PSO adaptativo (modificação implementada)**, TPE (referência do artigo), Random Search e Grid Search (baselines). Analisa adicionalmente linear versus log no espaço amplo. Ambos os PSOs usam **10 partículas** e o **mesmo número de chamadas da função objetivo** (20/50) — comparação de orçamento controlado. Sem resultados reais, **não se pode afirmar que o PSO adaptativo melhorou a acurácia**.
+A opção `--mode extension` possui cinco algoritmos: PSO original, **PSO adaptativo (modificação implementada)**, TPE (referência do artigo), Random Search e Grid Search (baselines). Analisa adicionalmente linear versus log no espaço amplo. Ambos os PSOs usam **10 partículas** e o **mesmo número de chamadas da função objetivo** (20/50/100) — comparação de orçamento controlado. Sem resultados reais, **não se pode afirmar que o PSO adaptativo melhorou a acurácia**.
 
 ### Outras opções
 
@@ -125,7 +151,7 @@ Nunca misture `--smoke` (sintético), `--quick` (subamostra real) e execução c
 - `src/runner.py`: execução, rastreamento de sementes, tempos, CSVs, testes exploratórios e gráficos.
 - `main.py`: interface por terminal.
 - `config/experiments.json`: todos os parâmetros e cenários reproduzíveis.
-- `tests/test_miniprojeto.py`: 16 testes de integridade da implementação.
+- `tests/`: 25 testes atuais, incluindo regressões para inércia, reinícios, SHA e interação fatorial.
 - `results/<execução>/`: `experiment_manifest.json`, `dataset_report.json`, `runs.csv`, `aggregated.csv`, `evaluations/`, `confusion/`, `statistics/`, `figures/`.
 - `docs/`: relatório editável, slides e roteiro de apresentação.
 
@@ -147,7 +173,7 @@ Em `runs.csv`, **`best_val_accuracy`** serve à seleção do método durante o t
 | Desbalanceamento | Classes contadas; métricas **macro e weighted**. Não foi empregado SMOTE/Tomek por padrão. Se fosse adicionado, teria de ser aplicado somente aos folds de treinamento, nunca sobre validação/teste. |
 | Métricas | Acurácia, precisão/recall/F1 micro/macro/weighted, matrizes de confusão, tempo de otimização, avaliações da função objetivo e custo de SHA. |
 | Implementação/fontes | Python, NumPy, scikit-learn, SciPy, pandas e Matplotlib. Fonte primária artigo e PMLB. |
-| Alteração original de 2 pontos | **Adaptive PSO**: inércia varia linearmente de 0,9 a 0,4; reinicialização gaussiana de uma partícula ao estagnar por 2 gerações. Ablation contra PSO com mesmas sementes e orçamento; mais comparação linear vs log. |
+| Alteração original de 2 pontos | **Adaptive PSO**: inércia varia linearmente de 0,9 a 0,4; reinicialização uniforme da pior partícula (posição, velocidade e pBest) após 2 gerações estagnadas. Ablation contra PSO com mesmas sementes e orçamento; mais comparação linear vs log. |
 | Trabalho individual | Preencher nomes e contribuições **reais** no relatório (não há como inferi-las). |
 | Slides / tempo | Apresentação editável e roteiro para **seis blocos de aproximadamente 10 min**; inserir resultados reais antes de apresentar. |
 

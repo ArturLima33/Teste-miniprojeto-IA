@@ -79,17 +79,20 @@ class Objective:
                               .split(self.X, self.y))
         else:
             raise ValueError('validation.type deve ser holdout ou cv')
-        # Ordem de treino fixada por fold: mesma amostra reduzida para cada candidato SHA.
+        # Ordem estratificada PROPORCIONAL com subconjuntos aninhados.
+        # As posições de cada classe são distribuídas em quantis [0,1),
+        # preservando aproximadamente as frequências em cada prefixo.
+        # Diferentemente de round-robin, não transforma o treino em balanceado.
         self.orders = []
         for i, (tr, _) in enumerate(self.folds):
             rng = np.random.default_rng(seed + i)
-            # A amostragem deve ser estratificada para manter todas as classes.
-            buckets = [list(rng.permutation(tr[self.y[tr] == label])) for label in np.unique(self.y)]
-            merged = []
-            while any(buckets):
-                for b in buckets:
-                    if b: merged.append(b.pop())
-            self.orders.append(np.asarray(merged, dtype=int))
+            ranked = []
+            for label in np.unique(self.y[tr]):
+                idx = rng.permutation(tr[self.y[tr] == label])
+                quantiles = (np.arange(len(idx)) + rng.random(len(idx))) / len(idx)
+                ranked.extend(zip(quantiles, idx))
+            ranked.sort(key=lambda pair: pair[0])
+            self.orders.append(np.asarray([index for _, index in ranked], dtype=int))
 
     @property
     def n_evals(self):
